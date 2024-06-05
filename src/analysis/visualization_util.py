@@ -810,7 +810,8 @@ def plot_company_comparisons_altair(
     configure: bool = True,
     skip_pct: bool = False, # Skip calculation of percentage of restrictive tokens, assume this is passed in,
     legend_title: str = None,
-    legend_position: str = "bottom"
+    legend_position: str = "bottom",
+    legend_order: typing.List[str] = None
 ) -> alt.Chart:
     """Create an Altair chart to compare the percentage of restrictive tokens for different agents over time.
     """
@@ -835,7 +836,13 @@ def plot_company_comparisons_altair(
     forecast_ts = pd.to_datetime(forecast_startdate).timestamp() if forecast_startdate else int(data["timestamp"].max())
 
     # Create the color scale based on the provided color mapping
-    color_scale = alt.Scale(domain=list(color_mapping.keys()), range=list(color_mapping.values()))
+    color_scale = alt.Scale(
+        domain=list(color_mapping.keys()),
+        range=list(color_mapping.values())
+    ) if legend_order is None else alt.Scale(
+        domain=legend_order,
+        range=[color_mapping[agent] for agent in legend_order]
+    )
 
     ################################################################
     # BASE CHART

@@ -484,7 +484,7 @@ def forecast_and_plot_sarima(
         period_col="period",
         status_col="status",
         val_col="tokens",
-        title="Restriction Status over Time",
+        title="",
         ordered_statuses=ordered_statuses,
         status_colors=status_colors,
         datetime_swap=True,
