@@ -432,7 +432,8 @@ def create_stacked_area_chart(
     legend_cols: int = 1,
     forecast_startdate: str = None,
     configure: bool = True,
-    legend_title: str = None
+    legend_title: str = None,
+    legend_position: str = "bottom"
 ) -> alt.Chart:
     if ordered_statuses is None:
         ordered_statuses = df[status_col].unique().tolist()
@@ -463,7 +464,7 @@ def create_stacked_area_chart(
                 range=list(status_colors.values())
             ),
             title=legend_title,
-            legend=alt.Legend(orient="bottom", titleLimit=0)
+            legend=alt.Legend(orient=legend_position, titleLimit=0, columns=legend_cols)
         ),
         order="order:Q"
     )
@@ -474,20 +475,41 @@ def create_stacked_area_chart(
     ################################################################
     rules_dates = [pd.to_datetime(vl_date) for vl_date, _ in vertical_line_dates]
     df_rules = pd.DataFrame({"period": rules_dates, "label": [label for _, label in vertical_line_dates]})
+    df_rules = df_rules.sort_values("period")
+    df_rules["y_offset"] = 0.5 + (np.arange(len(df_rules)) * 0.1)
 
     rules = alt.Chart(df_rules).mark_rule(
         color="black"
     ).encode(
         x="period:T",
-        y=alt.value(-20),
+        y=alt.value(0),
         y2=alt.value(height)
     )
+
+    char_width_days = label_fontsize * 2
+    df_rules["x_end"] = df_rules["period"] + pd.to_timedelta(df_rules["label"].apply(lambda x: len(x) * char_width_days), unit='D')
+    df_rules["y_start"] = df_rules["y_offset"] - 0.05
+    df_rules["y_end"] = df_rules["y_offset"] + 0.05
+
+    rules_rect = alt.Chart(df_rules).mark_rect(
+        color="white",
+        opacity=0.6,
+        stroke="black",
+        strokeWidth=1,
+        cornerRadius=4
+    ).encode(
+        x="period:T",
+        x2="x_end:T",
+        y="y_start:Q",
+        y2="y_end:Q"
+    )
+
 
     rules_midpoint = alt.Chart(df_rules).mark_point(
         color="black"
     ).encode(
         x="period:T",
-        y=alt.value(-20)
+        y="y_offset:Q"
     )
 
     rules_text = alt.Chart(df_rules).mark_text(
@@ -496,14 +518,14 @@ def create_stacked_area_chart(
         dx=10,
         dy=0,
         color="black",
-        fontSize=label_fontsize
+        fontSize=label_fontsize - 2
     ).encode(
         x="period:T",
-        y=alt.value(-20),
+        y="y_offset:Q",
         text="label:N"
     )
 
-    chart = chart + rules + rules_midpoint + rules_text
+    chart = chart + rules + rules_rect + rules_midpoint + rules_text
 
     ################################################################
     # SHADE FORECASTED DATA REGIONS
@@ -786,7 +808,8 @@ def plot_company_comparisons_altair(
     eventline_scaling: float = 2,
     configure: bool = True,
     skip_pct: bool = False, # Skip calculation of percentage of restrictive tokens, assume this is passed in,
-    legend_title: str = None
+    legend_title: str = None,
+    legend_position: str = "bottom"
 ) -> alt.Chart:
     """Create an Altair chart to compare the percentage of restrictive tokens for different agents over time.
     """
@@ -801,10 +824,11 @@ def plot_company_comparisons_altair(
         total_tokens = df.groupby(["period", "agent"])["tokens"].sum().reset_index()
         restrictive_tokens = df[df["status"] == "all"].groupby(["period", "agent"])["tokens"].sum().reset_index()
         data = pd.merge(total_tokens, restrictive_tokens, on=["period", "agent"], how="left").fillna(0)
-        data["percent_Restrictive"] = (data["tokens_y"] / data["tokens_x"]) * 100
+        data["percent_Restrictive"] = (data["tokens_y"] / data["tokens_x"])
         data = data[["period", "agent", "percent_Restrictive"]]
     else:
         data = df
+        data["percent_Restrictive"] /= 100
 
     data["timestamp"] = data["period"].map(pd.Timestamp.timestamp)
     forecast_ts = pd.to_datetime(forecast_startdate).timestamp() if forecast_startdate else int(data["timestamp"].max())
@@ -829,13 +853,15 @@ def plot_company_comparisons_altair(
         ),
         y=alt.Y(
             "percent_Restrictive:Q",
-            title="Percentage of Tokens",
-            scale=alt.Scale(type=scale_y)
+            title="",
+            scale=alt.Scale(type=scale_y),
+            axis=alt.Axis(format="%", title="")
         ),
         color=alt.Color(
             "agent:N",
             scale=color_scale,
-            legend=alt.Legend(title=legend_title, orient="bottom", titleLimit=0))
+            legend=alt.Legend(title=legend_title, orient=legend_position, titleLimit=0)
+        )
     )
 
     ################################################################
@@ -861,6 +887,14 @@ def plot_company_comparisons_altair(
     df_rules["y_min"] = df_rules["y_range"].apply(lambda x: x[0] / eventline_scaling)
     df_rules["y_max"] = df_rules["y_range"].apply(lambda x: x[1] * eventline_scaling)
 
+
+    df_rules = df_rules.sort_values("period")
+
+    # Alternate the y-offsets for the event labels to avoid overlap (between bottom and top of rule)
+    df_rules["y_offset"] = np.zeros(len(df_rules))
+    df_rules.loc[np.arange(len(df_rules)) % 2 == 0, "y_offset"] = df_rules["y_max"]
+    df_rules.loc[np.arange(len(df_rules)) % 2 != 0, "y_offset"] = df_rules["y_min"]
+
     rules = alt.Chart(df_rules).mark_rule(
         color="black"
     ).encode(
@@ -869,11 +903,29 @@ def plot_company_comparisons_altair(
         y2="y_max:Q"
     )
 
+    char_width_days = label_fontsize * 2
+    df_rules["x_end"] = df_rules["period"] + pd.to_timedelta(df_rules["label"].apply(lambda x: len(x) * char_width_days), unit='D')
+    df_rules["y_start"] = df_rules["y_offset"] * 1.5
+    df_rules["y_end"] = df_rules["y_offset"] / 1.5
+
+    rules_rect = alt.Chart(df_rules).mark_rect(
+        color="white",
+        opacity=0.6,
+        stroke="black",
+        strokeWidth=1,
+        cornerRadius=4
+    ).encode(
+        x="period:T",
+        x2="x_end:T",
+        y="y_start:Q",
+        y2="y_end:Q"
+    )
+
     rules_midpoint = alt.Chart(df_rules).mark_point(
         color="black"
     ).encode(
         x="period:T",
-        y="y_max:Q"
+        y="y_offset:Q"
     )
 
     rules_text = alt.Chart(df_rules).mark_text(
@@ -882,10 +934,10 @@ def plot_company_comparisons_altair(
         dx=10,
         dy=0,
         color="black",
-        fontSize=label_fontsize
+        fontSize=label_fontsize - 2
     ).encode(
         x="period:T",
-        y="y_max:Q",
+        y="y_offset:Q",
         text="label:N"
     )
 
@@ -898,8 +950,8 @@ def plot_company_comparisons_altair(
             data[data["timestamp"] >= forecast_ts]
         ).mark_line().encode(
             x=alt.X("yearmonth(period):T", title="", axis=alt.Axis(format="%Y", labelAngle=0, tickCount="year")),
-            y=alt.Y("percent_Restrictive:Q", title="Percentage of Tokens", scale=alt.Scale(type=scale_y)),
-            color=alt.Color("agent:N", scale=color_scale, legend=alt.Legend(title=legend_title, orient="bottom", titleLimit=0)),
+            y=alt.Y("percent_Restrictive:Q", title="", scale=alt.Scale(type=scale_y)),
+            color=alt.Color("agent:N", scale=color_scale, legend=alt.Legend(title=legend_title, orient=legend_position, titleLimit=0)),
             strokeDash=alt.value([5, 5])
         )
 
@@ -944,7 +996,7 @@ def plot_company_comparisons_altair(
     # CHART PROPERTIES
     # Configure the appearance of the chart
     ################################################################
-    chart = (chart + rules + rules_midpoint + rules_text).properties(
+    chart = (chart + rules + rules_rect + rules_midpoint + rules_text).properties(
         width=width,
         height=height
     )
