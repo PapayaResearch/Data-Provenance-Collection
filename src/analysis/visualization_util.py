@@ -476,14 +476,15 @@ def create_stacked_area_chart(
     rules_dates = [pd.to_datetime(vl_date) for vl_date, _ in vertical_line_dates]
     df_rules = pd.DataFrame({"period": rules_dates, "label": [label for _, label in vertical_line_dates]})
     df_rules = df_rules.sort_values("period")
-    df_rules["y_offset"] = 0.5 + (np.arange(len(df_rules)) * 0.1)
+    df_rules["y_offset"] = 0.25 + (np.arange(len(df_rules)) * 0.1)
 
     rules = alt.Chart(df_rules).mark_rule(
         color="black"
     ).encode(
         x="period:T",
         y=alt.value(0),
-        y2=alt.value(height)
+        y2=alt.value(height),
+        strokeWidth=alt.value(1)
     )
 
     char_width_days = label_fontsize * 2
@@ -900,7 +901,8 @@ def plot_company_comparisons_altair(
     ).encode(
         x="period:T",
         y="y_min:Q",
-        y2="y_max:Q"
+        y2="y_max:Q",
+        strokeWidth=alt.value(1)
     )
 
     char_width_days = label_fontsize * 2
@@ -982,7 +984,7 @@ def plot_company_comparisons_altair(
             baseline="middle",
             dx=0,
             dy=height - 10,
-            color="gray",
+            color="black",
             fontWeight="bold"
         ).encode(
             x="date:T",
